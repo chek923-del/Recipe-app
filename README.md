@@ -1,6 +1,3 @@
-<!DOCTYPE html>
-  <h1>Recipe Roulette Web App</h1>
-  <p><!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
