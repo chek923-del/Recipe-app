@@ -1,3 +1,4 @@
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -52,8 +53,8 @@
     </section>
 
     <section class="mt-3 grid md:grid-cols-2 gap-3 items-center">
-      <input id="include" type="text" placeholder="Must include (comma‑separated)…" class="px-3 py-2 rounded-xl bg-white border shadow-sm" />
-      <input id="exclude" type="text" placeholder="Exclude (comma‑separated)…" class="px-3 py-2 rounded-xl bg-white border shadow-sm" />
+      <input id="include" type="text" placeholder="Must include (comma-separated)…" class="px-3 py-2 rounded-xl bg-white border shadow-sm" />
+      <input id="exclude" type="text" placeholder="Exclude (comma-separated)…" class="px-3 py-2 rounded-xl bg-white border shadow-sm" />
     </section>
 
     <div class="mt-3 flex flex-wrap items-center gap-2">
@@ -67,7 +68,7 @@
       <span id="status" class="text-sm text-gray-500"></span>
     </div>
 
-    <!-- Add form -->
+    <!-- Add/Edit form -->
     <form id="addForm" class="hidden mt-4 p-4 bg-white rounded-2xl shadow grid sm:grid-cols-2 gap-3">
       <div>
         <label class="text-sm font-medium">Name</label>
@@ -106,7 +107,7 @@
         <input id="fTime" type="number" min="1" class="w-full mt-1 px-3 py-2 rounded-xl bg-white border shadow-sm" placeholder="e.g., 25" />
       </div>
       <div class="sm:col-span-2">
-        <label class="text-sm font-medium">Ingredients (comma‑separated)</label>
+        <label class="text-sm font-medium">Ingredients (comma-separated)</label>
         <textarea id="fIngredients" rows="2" class="w-full mt-1 px-3 py-2 rounded-xl bg-white border shadow-sm" placeholder="onion, garlic, tomato, cumin…"></textarea>
       </div>
       <div>
@@ -117,6 +118,7 @@
         <button type="button" id="cancelAdd" class="px-4 py-2 rounded-xl bg-white border shadow-sm">Cancel</button>
         <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold shadow">Save recipe</button>
       </div>
+      <p id="editHint" class="sm:col-span-2 text-xs text-amber-600 hidden">You’re editing an existing recipe. Click “Save recipe” to update, or “Cancel” to discard changes.</p>
     </form>
 
     <p id="resultCount" class="mt-6 text-sm text-gray-600"></p>
@@ -134,6 +136,7 @@
       <div class="mt-auto flex items-center justify-between">
         <a class="link text-sm underline text-indigo-600 hidden" target="_blank" rel="noopener">Open recipe</a>
         <div class="flex items-center gap-3">
+          <button class="edit text-xs text-indigo-600 hover:underline">Edit</button>
           <button class="remove text-xs text-red-600 hover:underline">Remove</button>
         </div>
       </div>
@@ -144,10 +147,9 @@
     // ========= SETTINGS =========
     const SETTINGS = {
       MODE: 'sheets', // 'sheets' | 'local' (fallback)
-      API_URL: 'https://script.google.com/macros/s/AKfycbwBWlo7_CLUJ2khUazjQa3jYRWHTmhHHC2I_DLiJmEVHjSQ-4jh-zBkYjZ5csULZW45/exec', // <-- paste your Google Apps Script Web App URL
+      API_URL: 'https://script.google.com/macros/s/AKfycbwBWlo7_CLUJ2khUazjQa3jYRWHTmhHHC2I_DLiJmEVHjSQ-4jh-zBkYjZ5csULZW45/exec', // <-- your Web App URL
       TOKEN: 'Secretrecipe7' // simple shared-secret to block random writes
     };
-
     const LS_KEY = 'recipe_roulette_v5_cache';
 
     // ========= HELPERS =========
@@ -177,11 +179,13 @@
       fTime: document.getElementById('fTime'),
       fURL: document.getElementById('fURL'),
       fIngredients: document.getElementById('fIngredients'),
-      cardTpl: document.getElementById('cardTemplate')
+      cardTpl: document.getElementById('cardTemplate'),
+      editHint: document.getElementById('editHint')
     };
 
     function status(msg, ms = 1300) {
-      els.status.textContent = msg; if (!msg) return; setTimeout(() => { if (els.status.textContent === msg) els.status.textContent = ''; }, ms);
+      els.status.textContent = msg; if (!msg) return;
+      setTimeout(() => { if (els.status.textContent === msg) els.status.textContent = ''; }, ms);
     }
     const parseCSV = str => (str || '').split(',').map(s => s.trim()).filter(Boolean);
 
@@ -220,12 +224,31 @@
 Ingredients: ${(r.ingredients||[]).join(', ')}`;
         card.querySelector('.desc').textContent = desc;
         if (r.url) { const link = card.querySelector('.link'); link.classList.remove('hidden'); link.href = r.url; }
+
+        // Remove
         card.querySelector('.remove').addEventListener('click', async () => {
           if (!confirm(`Remove “${r.name}”?`)) return;
           await apiDelete(r.id);
           await refresh();
           status('Removed');
         });
+
+        // Edit → fill the form and switch to "editing" mode
+        card.querySelector('.edit').addEventListener('click', () => {
+          els.fName.value = r.name || '';
+          els.fType.value = r.type || '';
+          els.fFoodType.value = r.foodType || '';
+          els.fMeatType.value = r.meatType || '';
+          els.fCuisine.value = r.cuisine || '';
+          els.fTime.value = r.time || '';
+          els.fIngredients.value = (r.ingredients || []).join(', ');
+          els.fURL.value = r.url || '';
+          state.editingId = r.id;
+          els.editHint.classList.remove('hidden');
+          els.addForm.classList.remove('hidden');
+          els.addForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+
         els.grid.appendChild(card);
       });
       els.count.textContent = `Showing ${list.length} recipes`;
@@ -257,17 +280,32 @@ Ingredients: ${(r.ingredients||[]).join(', ')}`;
 
     async function apiAdd(item) {
       if (SETTINGS.MODE !== 'sheets') {
-        // local fallback: assign id and cache
         const arr = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
         item.id = Date.now().toString(); arr.push(item); localStorage.setItem(LS_KEY, JSON.stringify(arr));
         return { ok: true };
       }
       const res = await fetch(`${SETTINGS.API_URL}?action=add&token=${encodeURIComponent(SETTINGS.TOKEN)}`, {
         method: 'POST',
-        // IMPORTANT: omit custom headers to avoid CORS preflight with Apps Script
         body: JSON.stringify(item)
       });
       if (!res.ok) throw new Error('ADD failed');
+      return await res.json();
+    }
+
+    // NEW: Update
+    async function apiUpdate(item) {
+      if (SETTINGS.MODE !== 'sheets') {
+        const arr = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+        const i = arr.findIndex(x => x.id === item.id);
+        if (i >= 0) arr[i] = item;
+        localStorage.setItem(LS_KEY, JSON.stringify(arr));
+        return { ok: true };
+      }
+      const res = await fetch(`${SETTINGS.API_URL}?action=update&token=${encodeURIComponent(SETTINGS.TOKEN)}`, {
+        method: 'POST',
+        body: JSON.stringify(item)
+      });
+      if (!res.ok) throw new Error('UPDATE failed');
       return await res.json();
     }
 
@@ -279,7 +317,6 @@ Ingredients: ${(r.ingredients||[]).join(', ')}`;
       }
       const res = await fetch(`${SETTINGS.API_URL}?action=delete&token=${encodeURIComponent(SETTINGS.TOKEN)}`, {
         method: 'POST',
-        // IMPORTANT: omit custom headers to avoid CORS preflight with Apps Script
         body: JSON.stringify({ id })
       });
       if (!res.ok) throw new Error('DELETE failed');
@@ -287,7 +324,7 @@ Ingredients: ${(r.ingredients||[]).join(', ')}`;
     }
 
     // ========= STATE & BOOT =========
-    const state = { recipes: [] };
+    const state = { recipes: [], editingId: null };
 
     async function refresh() {
       try {
@@ -302,11 +339,24 @@ Ingredients: ${(r.ingredients||[]).join(', ')}`;
     }
 
     // Add form handlers
-    els.toggleAdd.addEventListener('click', () => { els.addForm.classList.toggle('hidden'); });
-    els.cancelAdd.addEventListener('click', () => { els.addForm.classList.add('hidden'); });
+    els.toggleAdd.addEventListener('click', () => {
+      // If toggling while editing, keep the hint on
+      const nowHidden = !els.addForm.classList.contains('hidden');
+      els.addForm.classList.toggle('hidden');
+      els.editHint.classList.toggle('hidden', state.editingId === null || els.addForm.classList.contains('hidden'));
+    });
+
+    els.cancelAdd.addEventListener('click', () => {
+      els.addForm.classList.add('hidden');
+      els.editHint.classList.add('hidden');
+      state.editingId = null;
+      els.addForm.reset();
+    });
+
     els.addForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const obj = {
+        id: state.editingId || undefined,
         name: els.fName.value.trim(),
         type: els.fType.value.trim(),
         foodType: els.fFoodType.value,
@@ -317,9 +367,20 @@ Ingredients: ${(r.ingredients||[]).join(', ')}`;
         url: els.fURL.value.trim()
       };
       if (!obj.name) return alert('Please enter a recipe name.');
-      await apiAdd(obj);
+
+      if (state.editingId) {
+        await apiUpdate({ ...obj, id: state.editingId });
+        state.editingId = null;
+        status('Updated');
+      } else {
+        await apiAdd(obj);
+        status('Saved');
+      }
+
       await refresh();
-      e.target.reset(); els.addForm.classList.add('hidden'); status('Saved');
+      e.target.reset();
+      els.addForm.classList.add('hidden');
+      els.editHint.classList.add('hidden');
     });
 
     // Import / export (local backup only)
@@ -336,7 +397,6 @@ Ingredients: ${(r.ingredients||[]).join(', ')}`;
         try {
           const arr = JSON.parse(reader.result);
           if (!Array.isArray(arr)) throw new Error('Invalid JSON');
-          // import as multiple add ops (keeps server sheet tidy)
           for (const item of arr) {
             await apiAdd(item);
           }
