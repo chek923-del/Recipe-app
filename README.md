@@ -362,5 +362,3 @@ Ingredients: ${(r.ingredients||[]).join(', ')}`;
   </script>
 </body>
 </html>
-</body>
-</html>
