@@ -146,7 +146,7 @@
     // ========= SETTINGS =========
     const SETTINGS = {
       MODE: 'sheets', // 'sheets' | 'local' (fallback)
-      API_URL: 'https://script.google.com/macros/s/AKfycbwBWlo7_CLUJ2khUazjQa3jYRWHTmhHHC2I_DLiJmEVHjSQ-4jh-zBkYjZ5csULZW45/exec', // <-- your Web App URL
+      API_URL: 'https://script.google.com/macros/s/AKfycbw_0AU6mXHGbG5m6eEAerjIZN4piNbD48O2XvHxzlSKVk0hKnOSWF5m7G9NSGMnLPkt/exec', // <-- your Web App URL
       TOKEN: 'Secretrecipe7' // simple shared-secret to block random writes
     };
     const LS_KEY = 'recipe_roulette_v5_cache';
